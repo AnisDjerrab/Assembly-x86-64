@@ -41,7 +41,6 @@ _start:
     mov rax, qWord [qWordVariable1]
     mov rbx, qWord [qWordVariable2]
     imul rbx
-    imul rax, rbx ; same
     mov qWord [qMulResult], rax
     ; mov different register's values between each other
     mov eax, -55
