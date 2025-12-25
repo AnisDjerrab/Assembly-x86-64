@@ -11,16 +11,19 @@ printf:
 SizeLoop:
     mov al, Byte [rcx + rsi]
     cmp al, 0
-    je ReturnSize
+    je PrintTheString
     inc rsi
     inc r10
+    jmp SizeLoop
 PrintTheString:
     ; actually print the string
+    mov rbx, rsi
     mov rax, 1
-    mov rbx, 1
+    mov rdi, 1
     mov rsi, rcx
-    mov rdx, 10
+    mov rdx, rbx
     syscall
+QuitPrint:
     ; exit the function
     pop rbx
     pop rbp
@@ -38,9 +41,9 @@ CopyLoop:
     mov al, Byte [rcx + rsi]
     mov Byte [rdx + rsi], al
     cmp al, 0
-    je Exit
+    je Exitcpy
     inc rsi
-Exit:
+Exitcpy:
     pop rbp
     ret
 
@@ -50,15 +53,15 @@ strlen:
     mov rbp, rsp
 
     ; the string adress must be contained in rcx
-    mov rsi, 0
+    mov rax, 0
     xor r10, r10
 LenLoop:
-    mov r10b, Byte [rcx + rsi]
+    mov r10b, Byte [rcx + rax]
     cmp r10b, 0
-    je Quit
-    inc rsi
+    je Quitlen
     inc rax
-Quit:
+    jmp LenLoop
+Quitlen:
     ; len is in rax
     pop rbp
     ret
@@ -67,6 +70,7 @@ Quit:
 strcmp:
     push rbp
     mov rbp, rsp
+    push rbx
 
     ; rcx must contain the adress of the first string
     ; rdx must contain the adress of the second string
@@ -79,24 +83,28 @@ CompareLoop:
     cmp bl, 0
     je Exit
     cmp al, bl
-    jne Return
+    jne Exit
     inc rsi
+    jmp CompareLoop
 Exit:
     cmp al, bl
-    je ReturnEqual
     ja ReturnBigger
     jb ReturnSmaller
+    je ReturnEqual
 ReturnBigger:
     mov rax, 1
-    pop ebp
+    pop rbx
+    pop rbp
     ret
 ReturnSmaller:
     mov rax, -1
-    pop ebp
+    pop rbx
+    pop rbp
     ret
 ReturnEqual:
     mov rax, 0
-    pop ebp
+    pop rbx
+    pop rbp
     ret
 
 
@@ -108,20 +116,23 @@ UP:
     mov rsi, 0
 UpLoop:
     mov al, Byte [rcx + rsi]
+    inc rsi
     cmp al, 'a'
     jae SecondConditionUp
-    jmp ContinueUp
+    cmp al, 0
+    je ContinueUp
+    jmp UpLoop
 SecondConditionUp:
     cmp al, 'z'
-    jbe incrementValue
-    jmp ContinueUp
-incrementValue:
-    add al, 32
+    jbe decrementValue
+    jmp UpLoop
+decrementValue:
+    sub al, 32
+    dec rsi
     mov Byte [rcx + rsi], al
-ContinueUp:
-    cmp al, 0
-    jne UpLoop
     inc rsi
+    jmp UpLoop
+ContinueUp:
 
     pop rbp
     ret
@@ -135,22 +146,73 @@ DOWN:
     mov rsi, 0
 DownLoop:
     mov al, Byte [rcx + rsi]
+    inc rsi
     cmp al, 'A'
     jae SecondConditionDown
-    jmp ContinueDown
-SecondConditionDown:
-    cmp al, 'Z'
-    jbe decrementValue
-    jmp ContinueDown
-decrementValue:
-    dec al, 32
-    mov Byte [rcx + rsi], al
-ContinueDown:
     cmp al, 0
-    jne UpLoop
+    je ContinueDown
+    jmp DownLoop
+SecondConditionDown:
+    cmp al, 'z'
+    jbe incrementValue
+    jmp DownLoop
+incrementValue:
+    add al, 32
+    dec rsi
+    mov Byte [rcx + rsi], al
     inc rsi
+    jmp DownLoop
+ContinueDown:
 
     pop rbp
     ret
 
 
+sprintf:
+    push rbp
+    mov rbp, rsp
+    push rbx
+
+    ; r8 must contain the input number
+    ; r9 must contain the adress of the output string 
+    ; r10 will contain the index in the result buffer
+    xor r10, r10
+    xor r11, r11
+    mov rax, r8
+    shr rax, 63
+    cmp rax, 1
+    je NegativeNumber
+    jmp PositiveNumber
+NegativeNumber:
+    mov byte [r9 + r11], '-'
+    inc r11
+    mov rax, r8
+    neg rax
+    jmp DivideLoop
+PositiveNumber:
+    mov rax, r8
+    jmp DivideLoop
+DivideLoop:
+    mov rbx, 10
+    xor rdx, rdx
+    div rbx
+    push rdx
+    inc r11
+    cmp rax, 0
+    jne DivideLoop
+Between:
+    mov rcx, r11
+    xor r10, r10
+    ; now, Write the caracters one by one in the buffer
+WriteInAsciiLoop:
+    pop rdx
+    add rdx, '0'
+    mov byte [r9 + r10], dl
+    inc r10
+    loop WriteInAsciiLoop
+    ; finally, write the final 0
+    mov byte [r9 + r10], 0
+    ; exit the function
+    pop rbx
+    pop rbp
+    ret
