@@ -107,6 +107,57 @@ ReturnEqual:
     pop rbp
     ret
 
+; a variant of strcmp which supports token comparison while keeping the original behavior of strcmp
+strcmp_spc:
+    push rbp
+    mov rbp, rsp
+    push rbx
+
+    ; rcx must contain the adress of the first string
+    ; rdx must contain the adress of the second string
+    mov rsi, 0
+CompareLoopToken:
+    mov al, Byte [rcx + rsi]
+    mov bl, Byte [rdx + rsi]
+    cmp al, 0
+    je ExitToken
+    cmp al, ' '
+    je InterAl
+    cmp bl, 0
+    je ExitToken
+    cmp bl, ' '
+    je InterBl
+    cmp al, bl
+    jne ExitToken
+    inc rsi
+    jmp CompareLoop
+InterAl:
+    mov al, 0
+    jmp ExitToken
+InterBl:
+    mov bl, 0
+    jmp ExitToken
+ExitToken:
+    cmp al, bl
+    ja ReturnBiggerToken
+    jb ReturnSmallerToken
+    je ReturnEqualToken
+ReturnBiggerToken:
+    mov rax, 1
+    pop rbx
+    pop rbp
+    ret
+ReturnSmallerToken:
+    mov rax, -1
+    pop rbx
+    pop rbp
+    ret
+ReturnEqualToken:
+    mov rax, 0
+    pop rbx
+    pop rbp
+    ret
+
 
 UP:
     push rbp
