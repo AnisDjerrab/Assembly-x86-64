@@ -7,13 +7,11 @@ printf:
 
     ; the string adress must be contained in rcx
     mov rsi, 0
-    xor r10, r10
 SizeLoop:
     mov al, Byte [rcx + rsi]
     cmp al, 0
     je PrintTheString
     inc rsi
-    inc r10
     jmp SizeLoop
 PrintTheString:
     ; actually print the string
@@ -23,7 +21,6 @@ PrintTheString:
     mov rsi, rcx
     mov rdx, rbx
     syscall
-QuitPrint:
     ; exit the function
     pop rbx
     pop rbp
@@ -43,6 +40,7 @@ CopyLoop:
     cmp al, 0
     je Exitcpy
     inc rsi
+    jmp CopyLoop
 Exitcpy:
     pop rbp
     ret
@@ -204,7 +202,7 @@ DownLoop:
     je ContinueDown
     jmp DownLoop
 SecondConditionDown:
-    cmp al, 'z'
+    cmp al, 'Z'
     jbe incrementValue
     jmp DownLoop
 incrementValue:
@@ -264,6 +262,43 @@ WriteInAsciiLoop:
     ; finally, write the final 0
     mov byte [r9 + r10], 0
     ; exit the function
+    pop rbx
+    pop rbp
+    ret
+
+strtol:
+    push rbp
+    mov rbp, rsp
+    push rbx
+
+    ; rcx must contain the input string adress
+    ; r8 will contain the index in the rcx string
+    mov r8, 0
+    xor rax, rax
+    mov rbx, 1
+    mov r10, rcx
+    xor rcx, rcx
+    xor r11, r11
+PushLoop:
+    mov al, byte [r10 + r8]
+    inc r8
+    cmp al, 0
+    je PopLoop
+    push rax
+    inc rcx
+    jmp PushLoop
+PopLoop:
+    pop rax
+    sub rax, '0'
+    mul rbx
+    add r11, rax
+    mov rax, 10
+    mul rbx
+    mov rbx, rax
+    loop PopLoop
+    ; now, write the number
+    mov rax, r11
+
     pop rbx
     pop rbp
     ret
