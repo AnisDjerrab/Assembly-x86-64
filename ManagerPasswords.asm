@@ -8,7 +8,7 @@ section .data
     STDIN equ 0
     STDOUT equ 1
     SEEKSET equ 0
-    SEEKEND equ 0
+    SEEKEND equ 2
     O_RDWR equ 2
     O_CREAT equ 0x40
     ; variables
@@ -32,6 +32,11 @@ section .data
     listText db "The number of passwords stored is : ", 0
     eraseCommand db "delete", 0
     addCommand db "add", 0
+    addCommandErrorMessage db "error : invalid arguments.", 10, 0
+    passwordAdd db "--password", 0
+    pAdd db "-p", 0
+    nameAdd db "--name", 0
+    nAdd db "-n", 0
     clearCommand db "clear", 0
     setCommand db "set", 0
     qCommand db "q", 0
@@ -45,13 +50,16 @@ section .data
     Minutes dq 0
     Seconds dq 0
     MonthsOfTheYear db 31,28,31,30,31,30,31,31,30,31,30,31
-    headerBuffer db "number of passwords set: 0", 0, "                  ", 10, "at [    /  /     :  :  ]"
+    headerBuffer db "number of passwords set: 0", 0, "                  at [    /  /     :  :  ]", 10
+    PasswdBuffer db "passwd<                                        >:                    ", 10
 section .bss
     command resb 1024
-    char resb 1
     fileName resb 512
-    fileBuffer resb 7070
+    fileBuffer resb 7071
     numberOfEntries resq 1
+    Password resb 21
+    namePassword resb 41
+    arg resb 50
     maxNumberSize resb 20
 section .text
     default rel
@@ -143,13 +151,18 @@ ExecuteCommand:
     call strcmp_spc
     cmp rax, 0
     je listPasswords
+    ; command add  
+    mov rdx, addCommand
+    call strcmp_spc
+    cmp rax, 0 
+    je addPassword
     jmp BigLoop
 helpUtility:
     mov rcx, helpMessage
     call printf
     jmp BigLoop
 listPasswords:
-    ; seek to adress 0
+    ; seek to adress 25
     mov rax, sys_lseek
     mov rdi, qWord [FileDescriptor]
     mov rsi, 25
@@ -173,7 +186,7 @@ listPasswords:
     call printf
     mov rcx, maxNumberSize
     call printf
-    mov rcx, printf
+    mov rcx, newLine
     call printf
     ; seek to adress 70
     mov rax, sys_lseek
@@ -187,11 +200,178 @@ listPasswords:
     mov rsi, fileBuffer
     mov rdx, r13
     syscall
+    mov Byte [fileBuffer + r13], 0
     ; finally, output everything
     mov rcx, fileBuffer
+    call printf
+    jmp BigLoop
+addPassword:
+    mov Byte [Password], 0
+    mov Byte [namePassword], 0
+    ; r13 will contain the index in arg or password or name
+    mov r13, 0
+    ; r12 will contain the value password(0)/name(1)/arg(-1)
+    mov r12, -2
+    mov rsi, 3
+    cmp Byte [command + 3], 0
+    je addCommandError
+loopadd:
+    mov al, Byte [command + rsi]
+    inc rsi
+    cmp al, 0
+    je AddToPasswordFile
+    cmp al, ' '
+    je DoNotAddCharToString
+    cmp al, 9
+    je DoNotAddCharToString
+    cmp r12, -1
+    je AddCharToArg
+    cmp r12, 1
+    je AddCharToName
+    cmp r12, 0
+    je AddCharToPassword
+    jmp addCommandError
+AddCharToArg:
+    mov r12, -1
+    cmp r13, 49
+    je addCommandError
+    mov Byte [arg + r13], al
+    inc r13
+    jmp loopadd
+AddCharToName:
+    cmp r13, 20
+    je addCommandError
+    mov Byte [namePassword + r13], al
+    inc r13
+    jmp loopadd
+AddCharToPassword:
+    cmp r13, 40
+    je addCommandError
+    mov Byte [Password + r13], al
+    inc r13
+    jmp loopadd
+DoNotAddCharToString:
+    cmp r12, -2
+    je ReturnToAddLoop
+    cmp r13, 0
+    je addCommandError
+    mov Byte [arg + r13], 0
+    cmp r12, -1
+    je CheckArg
+    cmp r12, 0
+    je ArgSet
+    cmp r12, 1
+    je ArgSet
+    jmp addCommandError
+CheckArg:
+    mov rcx, arg
+    mov rdx, passwordAdd
+    push rsi
+    call strcmp
+    pop rsi
+    cmp rax, 0
+    je PasswordSet
+    mov rcx, arg
+    mov rdx, pAdd
+    push rsi
+    call strcmp
+    pop rsi
+    cmp rax, 0
+    je PasswordSet
+    mov rcx, arg
+    mov rdx, nameAdd
+    push rsi
+    call strcmp
+    pop rsi
+    cmp rax, 0
+    je NameSet
+    mov rcx, arg
+    mov rdx, nAdd
+    push rsi
+    call strcmp
+    pop rsi
+    cmp rax, 0
+    je NameSet
+    jmp addCommandError
+PasswordSet:
+    mov r12, 0
+    jmp ContinueAddCommandLoop
+NameSet:
+    mov r12, 1
+ContinueAddCommandLoop:
+    mov r13, 0
+    jmp loopadd 
+ArgSet:
+    mov r12, -1
+    mov r13, 0
+    jmp loopadd
+ReturnToAddLoop:
+    mov r12, -1
+    jmp loopadd
+AddToPasswordFile:
+    cmp byte [Password], 0
+    je addCommandError
+    cmp byte [namePassword], 0
+    je addCommandError
+    mov rcx, namePassword
+    lea rdx, Byte [PasswdBuffer + 7]
+    call strcpy_raw
+    mov rcx, Password
+    lea rdx, Byte [PasswdBuffer + 49]
+    call strcpy_raw
+    ; now, lseek to the end 
+    mov rax, sys_lseek
+    mov rdi, qWord [FileDescriptor]
+    mov rsi, 0
+    mov rdx, SEEKEND
     syscall
-
-
+    ; write it
+    mov rax, Sys_write
+    mov rdi, qWord [FileDescriptor]
+    mov rsi, PasswdBuffer
+    mov rdx, 70
+    syscall
+    ; and finally, increment the number of passwords
+    ; seek to adress 25
+    mov rax, sys_lseek
+    mov rdi, qWord [FileDescriptor]
+    mov rsi, 25
+    mov rdx, SEEKSET
+    syscall
+    ; read ASCII number 
+    mov rax, Sys_read
+    mov rdi, qWord [FileDescriptor]
+    mov rsi, maxNumberSize
+    mov rdx, 20
+    syscall
+    ; convert in integer
+    mov rcx, maxNumberSize
+    call strtol
+    ; increment rax
+    inc rax
+    ; convert back and write back
+    mov r8, rax
+    mov r9, maxNumberSize
+    call sprintf
+    mov rcx, maxNumberSize
+    call strlen
+    ; seek to adress 25
+    mov rax, sys_lseek
+    mov rdi, qWord [FileDescriptor]
+    mov rsi, 25
+    mov rdx, SEEKSET
+    syscall
+    mov rbx, 15
+    mov rax, Sys_write
+    mov rdi, qWord [FileDescriptor]
+    mov rsi, maxNumberSize
+    mov rdx, rbx
+    syscall
+    jmp BigLoop
+addCommandError:
+    mov rcx, addCommandErrorMessage
+    call printf
+    jmp BigLoop
 ExitProgram:
     mov rax, Sys_exit
     xor rdi, rdi
@@ -310,7 +490,7 @@ FinishedLoop:
     mov r9, maxNumberSize
     call sprintf
     mov rcx, 4
-    mov rsi, 50
+    mov rsi, 49
     mov rdi, 0
 WriteLoop1:
     mov al, Byte [maxNumberSize + rdi]
@@ -321,27 +501,27 @@ WriteLoop1:
     mov r8, [Months]
     mov r9, maxNumberSize
     call sprintf
-    mov rdi, 55
+    mov rdi, 54
     call insertFunction
     mov r8, [Days]
     mov r9, maxNumberSize
     call sprintf
-    mov rdi, 58
+    mov rdi, 57
     call insertFunction
     mov r8, [Hours]
     mov r9, maxNumberSize
     call sprintf
-    mov rdi,  61
+    mov rdi,  60
     call insertFunction
     mov r8, [Minutes]
     mov r9, maxNumberSize
     call sprintf
-    mov rdi, 64
+    mov rdi, 63
     call insertFunction
     mov r8, [Seconds]
     mov r9, maxNumberSize
     call sprintf
-    mov rdi, 67
+    mov rdi, 66
     call insertFunction
 
     pop r15

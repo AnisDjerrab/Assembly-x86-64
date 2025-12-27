@@ -45,6 +45,25 @@ Exitcpy:
     pop rbp
     ret
 
+; a  modified version of that standart C strcpy which excludes the final \0
+strcpy_raw:
+    push rbp
+    mov rbp, rsp
+
+    ; rcx must contain the input string adress
+    ; rdx must contain the output string adress
+    mov rsi, 0
+CopyLoop_raw:
+    mov al, Byte [rcx + rsi]
+    cmp al, 0
+    je Exitcpy
+    mov Byte [rdx + rsi], al
+    inc rsi
+    jmp CopyLoop_raw
+Exitcpy_raw:
+    pop rbp
+    ret
+
 
 strlen:
     push rbp 
@@ -87,7 +106,9 @@ CompareLoop:
 Exit:
     cmp al, bl
     ja ReturnBigger
+    cmp al, bl
     jb ReturnSmaller
+    cmp al, bl
     je ReturnEqual
 ReturnBigger:
     mov rax, 1
@@ -128,7 +149,7 @@ CompareLoopToken:
     cmp al, bl
     jne ExitToken
     inc rsi
-    jmp CompareLoop
+    jmp CompareLoopToken
 InterAl:
     mov al, 0
     jmp ExitToken
