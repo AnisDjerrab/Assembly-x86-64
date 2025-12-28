@@ -288,13 +288,13 @@ AddCharToArg:
     inc r13
     jmp loopadd
 AddCharToName:
-    cmp r13, 20
+    cmp r13, 40
     je addCommandError
     mov Byte [namePassword + r13], al
     inc r13
     jmp loopadd
 AddCharToPassword:
-    cmp r13, 40
+    cmp r13, 20
     je addCommandError
     mov Byte [Password + r13], al
     inc r13
