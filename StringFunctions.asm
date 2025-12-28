@@ -65,6 +65,26 @@ Exitcpy_raw:
     ret
 
 
+memcpy:
+    push rbp
+    mov rbp, rsp
+
+    ; rcx must contain the input string adress
+    ; rdx must contain the output string adress
+    ; rsi must contain the copy size
+    mov rdi, 0
+CopyLoopMemcpy:
+    mov al, Byte [rcx + rdi]
+    mov Byte [rdx + rdi], al
+    inc rdi
+    dec rsi
+    cmp rsi, 0
+    jnbe CopyLoopMemcpy
+ExitcpyMemcpy:
+    pop rbp
+    ret
+
+
 strlen:
     push rbp 
     mov rbp, rsp

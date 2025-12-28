@@ -3,8 +3,10 @@ section .data
     Sys_read equ 0
     Sys_write equ 1
     Sys_open equ 2
-    sys_lseek equ 8
+    Sys_close equ 3
+    Sys_lseek equ 8
     Sys_exit equ 60
+    Sys_ftruncate equ 77
     STDIN equ 0
     STDOUT equ 1
     SEEKSET equ 0
@@ -22,17 +24,24 @@ section .data
                 db "Usage :", 10
                 db "   help : print the utility.", 10
                 db "   list : list all passwords and their name.", 10
-                db "   delete <--number x>|<name name_of_the_password> : erase a password entry.", 10
+                db "   delete <--number|-N x>|<--name|-n name_of_the_password> : erase a password entry.", 10
                 db "   add <--password|-p max_size_20_Bytes> <-n|--name max_size_40_Bytes> : add a new password entry.", 10
                 db "   clear : clears all previously defined passwords.", 10
                 db "   set </path/to/file>|<file> : defines the output file.", 10  
+                db "   date : display creation date.", 10
                 db "   q|quit : quit this program.", 10
                 db "Thank's for supporting my work!", 10, 0
     listCommand db "list", 0
     listText db "The number of passwords stored is : ", 0
-    eraseCommand db "delete", 0
+    deleteCommand db "delete", 0
+    deleteCommandErrorMessage db "error : invalid arguments.", 10, 0
+    nameDeletedCommand db "--name", 0
+    nDeletedCommand db "-n", 0
+    numberDeletedCommand db "--number", 0
+    numDeletedCommand db "-N", 0
     addCommand db "add", 0
     addCommandErrorMessage db "error : invalid arguments.", 10, 0
+    addCommandOverflowError db "error : exceeded max number of passwords '100'.", 10, 0
     passwordAdd db "--password", 0
     pAdd db "-p", 0
     nameAdd db "--name", 0
@@ -41,6 +50,8 @@ section .data
     setCommand db "set", 0
     qCommand db "q", 0
     quitCommand db "quit", 0
+    dateCommand db "date", 0 
+    dateMessage db "creation date : ", 0
     errorOverflow db "error : user input max size overflow.", 10, 0
     BeginningYear dq 1970
     Years dq 0
@@ -52,6 +63,7 @@ section .data
     MonthsOfTheYear db 31,28,31,30,31,30,31,31,30,31,30,31
     headerBuffer db "number of passwords set: 0", 0, "                  at [    /  /     :  :  ]", 10
     PasswdBuffer db "passwd<                                        >:                    ", 10
+    errorFileOpening db "error opening password log file. Aborting...", 10, 0
 section .bss
     command resb 1024
     fileName resb 512
@@ -61,6 +73,9 @@ section .bss
     namePassword resb 41
     arg resb 50
     maxNumberSize resb 20
+    maxNumberSizeDelete resb 20
+    dateBuffer resb 22
+    name resb 41
 section .text
     default rel
 
@@ -77,10 +92,14 @@ _start:
     mov rax, Sys_open
     mov rdi, fileName
     mov rsi, O_CREAT | O_RDWR
+    mov rdx, 644
     syscall
+    ; check for any errors
+    cmp rax, 0
+    jb CriticalError
     mov qWord [FileDescriptor], rax
     ; get file size
-    mov rax, sys_lseek
+    mov rax, Sys_lseek
     mov rdi, qWord [FileDescriptor]
     mov rsi, 0
     mov rdx, SEEKEND
@@ -92,7 +111,7 @@ _start:
 createFileStructure:
     call GenerateHeader
     ; seek to position 0
-    mov rax, sys_lseek
+    mov rax, Sys_lseek
     mov rdi, qWord [FileDescriptor]
     mov rsi, 0
     mov rdx, SEEKSET
@@ -156,6 +175,26 @@ ExecuteCommand:
     call strcmp_spc
     cmp rax, 0 
     je addPassword
+    ; command delete
+    mov rdx, deleteCommand
+    call strcmp_spc
+    cmp rax, 0
+    je deletePassword
+    ; command clear
+    mov rdx, clearCommand
+    call strcmp_spc
+    cmp rax, 0
+    je clearAllPasswords
+    ; command set
+    mov rdx, setCommand
+    call strcmp_spc
+    cmp rax, 0
+    je setLogFilePath
+    ; command date
+    mov rdx, dateCommand
+    call strcmp_spc
+    cmp rax, 0
+    je displayCreationDate
     jmp BigLoop
 helpUtility:
     mov rcx, helpMessage
@@ -163,7 +202,7 @@ helpUtility:
     jmp BigLoop
 listPasswords:
     ; seek to adress 25
-    mov rax, sys_lseek
+    mov rax, Sys_lseek
     mov rdi, qWord [FileDescriptor]
     mov rsi, 25
     mov rdx, SEEKSET
@@ -189,7 +228,7 @@ listPasswords:
     mov rcx, newLine
     call printf
     ; seek to adress 70
-    mov rax, sys_lseek
+    mov rax, Sys_lseek
     mov rdi, qWord [FileDescriptor]
     mov rsi, 70
     mov rdx, SEEKSET
@@ -206,8 +245,15 @@ listPasswords:
     call printf
     jmp BigLoop
 addPassword:
-    mov Byte [Password], 0
-    mov Byte [namePassword], 0
+    ; reset both Password and namePassword
+    mov rdi, Password
+    mov rcx, 20
+    mov al, ' '
+    rep stosb
+    mov rdi, namePassword
+    mov rcx, 40
+    mov al, ' '
+    rep stosb
     ; r13 will contain the index in arg or password or name
     mov r13, 0
     ; r12 will contain the value password(0)/name(1)/arg(-1)
@@ -215,9 +261,12 @@ addPassword:
     mov rsi, 3
     cmp Byte [command + 3], 0
     je addCommandError
+    push rsi
 loopadd:
+    pop rsi
     mov al, Byte [command + rsi]
     inc rsi
+    push rsi
     cmp al, 0
     je AddToPasswordFile
     cmp al, ' '
@@ -232,7 +281,6 @@ loopadd:
     je AddCharToPassword
     jmp addCommandError
 AddCharToArg:
-    mov r12, -1
     cmp r13, 49
     je addCommandError
     mov Byte [arg + r13], al
@@ -266,30 +314,22 @@ DoNotAddCharToString:
 CheckArg:
     mov rcx, arg
     mov rdx, passwordAdd
-    push rsi
     call strcmp
-    pop rsi
     cmp rax, 0
     je PasswordSet
     mov rcx, arg
     mov rdx, pAdd
-    push rsi
     call strcmp
-    pop rsi
     cmp rax, 0
     je PasswordSet
     mov rcx, arg
     mov rdx, nameAdd
-    push rsi
     call strcmp
-    pop rsi
     cmp rax, 0
     je NameSet
     mov rcx, arg
     mov rdx, nAdd
-    push rsi
     call strcmp
-    pop rsi
     cmp rax, 0
     je NameSet
     jmp addCommandError
@@ -320,11 +360,14 @@ AddToPasswordFile:
     lea rdx, Byte [PasswdBuffer + 49]
     call strcpy_raw
     ; now, lseek to the end 
-    mov rax, sys_lseek
+    mov rax, Sys_lseek
     mov rdi, qWord [FileDescriptor]
     mov rsi, 0
     mov rdx, SEEKEND
     syscall
+    ; check that size =< 7000
+    cmp rax, 7000
+    jnbe overflowError
     ; write it
     mov rax, Sys_write
     mov rdi, qWord [FileDescriptor]
@@ -333,7 +376,7 @@ AddToPasswordFile:
     syscall
     ; and finally, increment the number of passwords
     ; seek to adress 25
-    mov rax, sys_lseek
+    mov rax, Sys_lseek
     mov rdi, qWord [FileDescriptor]
     mov rsi, 25
     mov rdx, SEEKSET
@@ -356,23 +399,354 @@ AddToPasswordFile:
     mov rcx, maxNumberSize
     call strlen
     ; seek to adress 25
-    mov rax, sys_lseek
+    mov rax, Sys_lseek
     mov rdi, qWord [FileDescriptor]
     mov rsi, 25
     mov rdx, SEEKSET
     syscall
-    mov rbx, 15
     mov rax, Sys_write
     mov rdi, qWord [FileDescriptor]
     mov rsi, maxNumberSize
-    mov rdx, rbx
+    mov rdx, 20
     syscall
     jmp BigLoop
 addCommandError:
     mov rcx, addCommandErrorMessage
     call printf
     jmp BigLoop
+overflowError:
+    mov rcx, addCommandOverflowError
+    call printf
+    jmp BigLoop
+deletePassword:
+    ; r15 will contain the index in arg/name/maxnumbersize
+    mov r15, 0
+    ; r14 will contain the index in the command string
+    mov r14, 6
+    ; r13 will contain the state : -2=>initial, -1=>arg, 0=>name, 1=>maxnumbersize, 2=>error, 3=>error
+    mov r13, -2
+loopDelete:
+    mov al, Byte [command + r14]
+    inc r14
+    cmp al, 0
+    je ExitDeleteLoop
+    cmp al, ' '
+    je ChangeState
+    cmp al, 9
+    je ChangeState
+    cmp r13, -2
+    je deleteCommandError
+    cmp r13, -1
+    je IncrementCharToArg
+    cmp r13, 0
+    je IncrementCharToName
+    cmp r13, 1
+    je IncrementCharToMaxNumberSize
+    jmp deleteCommandError
+IncrementCharToArg:
+    cmp r15, 49
+    je deleteCommandError
+    mov Byte [arg + r15], al
+    inc r15
+    jmp loopDelete
+IncrementCharToName:
+    cmp r15, 40
+    je deleteCommandError
+    mov Byte [name + r15], al
+    inc r15
+    jmp loopDelete
+IncrementCharToMaxNumberSize:
+    cmp r15, 20
+    je deleteCommandError
+    mov Byte [maxNumberSizeDelete + r15], al
+    inc r15
+    jmp loopDelete
+ChangeState:
+    cmp r13, 2
+    je loopDelete
+    cmp r13, 3
+    je loopDelete
+    cmp r13, 1
+    je ChangeToErrorState1
+    cmp r13, 0
+    je ChangeToErrorState0
+    cmp r13, -1
+    je checkArgDeleteCommand
+    cmp r13, -2
+    je SetArg
+    jmp deleteCommandError
+checkArgDeleteCommand:
+    mov Byte [arg + r15], 0
+    mov rcx, arg
+    mov rdx, nameDeletedCommand
+    call strcmp
+    cmp rax, 0
+    je SetName
+    mov rcx, arg
+    mov rdx, nDeletedCommand
+    call strcmp
+    cmp rax, 0
+    je SetName
+    mov rcx, arg
+    mov rdx, numberDeletedCommand
+    call strcmp
+    cmp rax, 0
+    je SetNumber
+    mov rcx, arg
+    mov rdx, numDeletedCommand
+    call strcmp
+    cmp rax, 0
+    je SetNumber
+    jmp deleteCommandError
+SetArg:
+    mov r13, -1
+    xor r15, r15
+    jmp loopDelete
+SetName:
+    mov r13, 0
+    xor r15, r15
+    jmp loopDelete
+SetNumber:
+    mov r13, 1
+    xor r15, r15
+    jmp loopDelete
+ChangeToErrorState0:
+    mov Byte [name + r15], 0
+    add r13, 2
+    jmp loopDelete
+ChangeToErrorState1:
+    mov Byte [maxNumberSizeDelete + r15], 0
+    add r13, 2
+    jmp loopDelete
+ExitDeleteLoop:
+    cmp r13, -2
+    je ContinueDeleteLoop
+    ; incremnt r13 if necessary
+    cmp r13, 1
+    jbe IncR13
+    jmp ContinueFunction
+IncR13:
+    add r13, 2
+ContinueFunction:
+    ; find out the number of passwords
+    mov rax, Sys_lseek
+    mov rdi, qWord [FileDescriptor]
+    mov rsi, 25
+    mov rdx, SEEKSET
+    syscall
+    mov rax, Sys_read
+    mov rdi, qWord [FileDescriptor]
+    mov rsi, maxNumberSize
+    mov rdx, 20
+    syscall 
+    mov rcx, maxNumberSize
+    call strtol
+    mov r12, rax
+    mov rbx, 70
+    mul rbx
+    ; now, rax contain the total size of all passwords
+    ; save it for later
+    mov r14, rax
+    ; save it for later
+    add r14, 70
+    ; lseek the offset 70
+    mov rax, Sys_lseek
+    mov rdi, qWord [FileDescriptor]
+    mov rsi, 70
+    mov rdx, SEEKSET
+    syscall
+    ; now, read EVERYTHING
+    mov rax, Sys_read
+    mov rdi, qWord [FileDescriptor]
+    mov rsi, fileBuffer
+    mov rdx, r14
+    syscall
+    ; write a final 0
+    mov Byte [fileBuffer + r14], 0
+    ; find out if the password exists, il yes, delete it and update.
+    mov r15, fileBuffer
+    cmp r13, 2
+    je FindName
+    cmp r13, 3
+    je FindNumber
+    jmp deleteCommandError
+FindName:
+    ; r15 will contain the index in the buffer
+    mov rcx, r12
+loopReadFileToFindName:
+    ; read the name
+    push rcx
+    lea rcx, Byte [r15 + 7]
+    mov rdx, name
+    call strcmp_spc
+    pop rcx
+    cmp rax, 0
+    je deletePasswordFinally
+    add r15, 70
+    loop loopReadFileToFindName
+    jmp deleteCommandError
+FindNumber:
+    ; first : convert the maxNumberSizeDelete variable
+    mov rcx, maxNumberSizeDelete
+    call strtol
+    ; check if it is bigger than r13
+    cmp rax, r12
+    ja deleteCommandError
+    ; now, dec rax to get the absolute loaclisation (a list starts with 0)
+    dec rax
+    mov rbx, 70
+    mul rbx
+    add r15, rax
+    jmp deletePasswordFinally
+deletePasswordFinally:
+    lea rcx, Byte [r15]
+    lea rdx, Byte [r15 + 70]
+    mov rsi, r14
+    call memcpy
+    ; now, update the counter at the beginning
+    dec r12
+    mov r8, r12
+    mov r9, maxNumberSize
+    call sprintf
+    ; lseek the the correct adress (25)
+    mov rax, Sys_lseek
+    mov rdi, qWord [FileDescriptor]
+    mov rsi, 25
+    mov rdx, SEEKSET
+    syscall
+    ; and write !
+    mov rax, Sys_write
+    mov rdi, qWord [FileDescriptor]
+    mov rsi, maxNumberSize
+    mov rdx, 20
+    syscall
+    ; calculate the new size 
+    mov rax, r12
+    mov rbx, 70
+    mul rbx
+    mov r12, rax
+    mov rax, Sys_lseek
+    mov rdi, qWord [FileDescriptor]
+    mov rsi, 70
+    mov rdx, SEEKSET
+    mov rax, Sys_write
+    mov rdi, qWord [FileDescriptor]
+    mov rsi, fileBuffer
+    mov rdx, r12
+    syscall
+    ; truncate the file
+    add r12, 70
+    mov rax, Sys_ftruncate
+    mov rdi, qWord [FileDescriptor]
+    mov rsi, r12
+    syscall
+    ; finally, return to the main loop
+    jmp BigLoop
+ContinueDeleteLoop:
+    mov r13, -1
+    inc rsi
+    jmp loopDelete
+deleteCommandError:
+    mov rcx, deleteCommandErrorMessage
+    call printf
+    jmp BigLoop
+clearAllPasswords:
+    ; this command completly clears the password file and resets it.
+    ; in order to do that, we first set it's size to 0
+    mov rax, Sys_ftruncate
+    mov rdi, qWord [FileDescriptor]
+    mov rsi, 0
+    syscall
+    ; we lseek to adress 0
+    mov rax, Sys_lseek
+    mov rdi, qWord [FileDescriptor]
+    mov rsi, 0
+    mov rdx, SEEKSET
+    syscall
+    ; now, we regenerate a minimal header
+    call GenerateHeader
+    ; and we write it
+    mov rax, Sys_write
+    mov rdi, qWord [FileDescriptor]
+    mov rsi, headerBuffer
+    mov rdx, 70
+    syscall
+    ; finally, jmp back
+    jmp BigLoop
+setLogFilePath:
+    ; first : read the user input
+    mov r15, 3
+    mov r14, 0
+readLoop:
+    mov al, Byte [command + r15]
+    inc r15
+    cmp al, 0
+    je TryToOpenTheFile
+    cmp al, ' '
+    je readLoop
+    cmp al, 9
+    je readLoop
+    cmp r14, 513
+    je CriticalError
+    mov Byte [fileName + r14], al
+    inc r14
+    jmp readLoop
+TryToOpenTheFile:
+    mov Byte [fileName + r14], 0
+    ; try to open the file
+    mov rax, Sys_open
+    mov rdi, fileName
+    mov rsi, O_CREAT | O_RDWR
+    mov rdx, 644
+    syscall
+    ; check for any errors
+    cmp rax, 0
+    jb CriticalError
+    mov qWord [FileDescriptor], rax
+    call GenerateHeader
+    ; seek to position 0
+    mov rax, Sys_lseek
+    mov rdi, qWord [FileDescriptor]
+    mov rsi, 0
+    mov rdx, SEEKSET
+    syscall
+    ; write the header buffer
+    mov rax, Sys_write
+    mov rdi, qWord [FileDescriptor]
+    mov rsi, headerBuffer
+    mov rdx, 70
+    syscall 
+    jmp BigLoop
+displayCreationDate:
+    ; seek to adress 48
+    mov rax, Sys_lseek
+    mov rdi, qWord [FileDescriptor]
+    mov rsi, 48
+    mov rdx, SEEKSET
+    syscall
+    ; read date 
+    mov rax, Sys_read
+    mov rdi, qWord [FileDescriptor]
+    mov rsi, dateBuffer
+    mov rdx, 21
+    syscall
+    ; output everything
+    mov rcx, dateMessage
+    call printf
+    mov rcx, dateBuffer
+    call printf
+    mov rcx, newLine
+    call printf
+    jmp BigLoop
+CriticalError:
+    mov rcx, errorFileOpening
+    call printf
 ExitProgram:
+    ; close the file
+    mov rax, Sys_close
+    mov rdi, qWord [FileDescriptor]
+    syscall
+    ; exit the program
     mov rax, Sys_exit
     xor rdi, rdi
     syscall
