@@ -64,6 +64,7 @@ section .data
     headerBuffer db "number of passwords set: 0", 0, "                  at [    /  /     :  :  ]", 10
     PasswdBuffer db "passwd<                                        >:                    ", 10
     errorFileOpening db "error opening password log file. Aborting...", 10, 0
+    errorUnknown db "unknown command.", 10, 0
 section .bss
     command resb 1024
     fileName resb 512
@@ -195,7 +196,7 @@ ExecuteCommand:
     call strcmp_spc
     cmp rax, 0
     je displayCreationDate
-    jmp BigLoop
+    jmp UnknownCommand
 helpUtility:
     mov rcx, helpMessage
     call printf
@@ -736,6 +737,10 @@ displayCreationDate:
     mov rcx, dateBuffer
     call printf
     mov rcx, newLine
+    call printf
+    jmp BigLoop
+UnknownCommand:
+    mov rcx, errorUnknown
     call printf
     jmp BigLoop
 CriticalError:
