@@ -818,7 +818,7 @@ FinalNumberOfYearsFound:
     add r14, rbx
     add rdi, 1970
     mov qWord [Years], rdi
-    ; no, it's time to calculate the month
+    ; now, it's time to calculate the month
     ; calculate the days of the current year 
     mov rax, r14
     cqo
@@ -833,15 +833,15 @@ ContinueCalculatingMonths:
     mov rcx, 12
     mov rsi, 0
     ; rdi contains the number of months
-    mov rdi, 0
+    mov rdi, 1
 LoopMonths:
     xor r15, r15
     mov r15b, Byte [MonthsOfTheYear + rsi]
     sub rax, r15
-    cmp rax, 0
-    jl FinishedLoop
-    inc rsi
     inc rdi
+    cmp rax, 0
+    jle FinishedLoop
+    inc rsi
     loop LoopMonths
 FinishedLoop:
     mov qWord [Months], rdi
@@ -849,6 +849,7 @@ FinishedLoop:
     mov r15b, Byte [MonthsOfTheYear + rsi]
     add rax, r15
     ; now : the number of days is directly contained in rax
+    dec rax 
     mov qWord [Days], rax
     ; and the rest in seconds is contained in rdx -- to find the number of hours, we just have to divide it by 3600
     mov rax, rdx
