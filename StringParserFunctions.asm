@@ -40,6 +40,32 @@ Exit:
     mov Byte [rdi + r9], 0
     ret
 
+global down
+down:
+    ; this function make a string non-case sensitive
+    ; rdi must contain the adress of the input string
+    mov rsi, 0
+downLoop:
+    mov al, Byte [rdi + rsi]
+    cmp al, 'A'
+    jae MaybeModifyLetter
+    cmp al, 0
+    je ExitDown
+    inc rsi
+    jmp downLoop
+MaybeModifyLetter:
+    cmp al, 'Z'
+    jbe ModifyLetter
+    inc rsi
+    jmp downLoop
+ModifyLetter:
+    add al, 32
+    mov Byte [rdi + rsi], al
+    inc rsi
+    jmp downLoop
+ExitDown:
+    ret 
+
 section .rodata
     ; constants
     Sys_write equ 1
