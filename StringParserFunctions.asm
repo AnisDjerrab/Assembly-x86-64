@@ -3,14 +3,30 @@ default rel
 section .text
 
 global help
+extern malloc
 help:
-    ; print the string
-    mov rax, Sys_write
-    mov rdi, STDOUT
-    mov rsi, helpString
-    mov rdx, 95
-    syscall
-    ; return 
+    ; rdi must contain the adress of the input string
+    ; copy the string
+    mov rdi, 95
+    call malloc
+    mov rcx, 80
+    mov rdi, 95
+    mov rsi, 0
+copyLoopFast:
+    movups xmm0, oword [helpString + rsi]
+    movups oword [rax + rsi], xmm0
+    add rsi, 16
+    sub rcx, 16
+    cmp rcx, 0
+    ja copyLoopFast
+    ; returns rax
+    mov rcx, rdi
+    sub rcx, rdi
+copyLoopSlow:
+    mov dl, Byte [helpString + rsi]
+    mov Byte [rax + rsi], dl
+    inc rsi
+    loop copyLoopSlow
     ret
 
 global eraseSpaces

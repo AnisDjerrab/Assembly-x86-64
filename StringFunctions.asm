@@ -322,9 +322,13 @@ strtol:
     xor r11, r11
 PushLoop:
     mov al, byte [r10 + r8]
-    inc r8
     cmp al, 0
     je PopLoop
+    cmp al, '0'
+    jb ExitError
+    cmp al, '9'
+    ja ExitError
+    inc r8
     push rax
     inc rcx
     jmp PushLoop
@@ -340,6 +344,11 @@ PopLoop:
     ; now, write the number
     mov rax, r11
 
+    pop rbx
+    pop rbp
+    ret
+ExitError:
+    mov rax, -1
     pop rbx
     pop rbp
     ret

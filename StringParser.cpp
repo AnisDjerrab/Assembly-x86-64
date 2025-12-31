@@ -8,7 +8,7 @@
 using namespace std;
 
 // calling the Assembly functions
-extern "C" void help();
+extern "C" char* help();
 extern "C" void eraseSpaces(char*);
 extern "C" void down(char*); 
 
@@ -16,6 +16,125 @@ struct node {
     string name;
     vector<variant<node*, char*>> children;
 };
+
+
+node* createTheTree(vector<char*>* tokens, map<string, int>& map, int& index) {
+    for (int i = index; i < tokens->size(); i++) {
+        index++;
+        string element = string(tokens->at(i));
+        auto found = map.find(element);
+        if (found != map.end()) {
+            int NumberOfArgs = map[element];
+            if ((i+NumberOfArgs+2) >= tokens->size()) {
+                cout << "error : invalid function declaration : " << tokens->at(i) << endl;
+                return nullptr;
+            }
+            if (!(strcmp(tokens->at(i + 1), "(") == 0)) {
+                cout << "error : invalid function declaration : " << tokens->at(i) << endl;
+                return nullptr;
+            }
+            i++;
+            index++;
+            i++;
+            index++;
+            vector<variant<node*, char*>> children;
+            for (int o = 0; o < NumberOfArgs; o++) {
+                if (strlen(tokens->at(i)) == 0) {
+                    cout << "error : invalid token size." << endl;
+                    return nullptr;
+                } 
+                if (strcmp(tokens->at(i), "\"") == 0 || strcmp(tokens->at(i), "\'") == 0) {
+                    char* arg = new char[strlen(tokens->at(i)) + 1];
+                    strcpy(arg, tokens->at(i));
+                    children.push_back(arg);
+                    if (i != NumberOfArgs - 1) {
+                        o++;
+                        i++;
+                        index++;
+                    }
+                }
+                if (!(strcmp(tokens->at(i), ",") == 0)) {
+                    node* arg = createTheTree(tokens, map, index);
+                    if (arg == nullptr) {
+                        return nullptr;
+                    }        
+                } 
+                index++;
+                i++;
+            }
+            if (!(strcmp(tokens->at(i), ")") == 0)) {
+                cout << "error : function not ended." << endl;
+                return nullptr;
+            }
+            node* n = new node();
+            n->name = element;
+            n->children = children;
+            return n;
+        } else {
+            cout << "error : unknown standart function : " << tokens->at(i) << endl;
+            return nullptr;
+        }
+        index++;
+    }
+}
+char* executeCode(node* head, map<string, int>& map) {
+    vector<char*> args;
+    for (int i = 0; i < head->children.size(); i++) {
+        char* element;
+        if (holds_alternative<char*>(head->children[i])) {
+            element = new char[strlen(get<char*>(head->children[i])) + 1];
+            strcpy(element, get<char*>(head->children[i]));
+            args.push_back(element);
+        } else if (holds_alternative<node*>(head->children[i])) {
+            element = executeCode(get<node*>(head->children[i]), map);
+            if (element == nullptr) {
+                freeMemoryVector(args);
+                return nullptr;
+            }
+            args.push_back(element);
+        }
+    }
+    // now, execute code and return an output
+    int NumberOfArgsRequired = map[head->name];
+    if (NumberOfArgsRequired != args.size()) {
+        cout << "error : invalid number of arguments in function : " << head->name << endl;
+        freeMemoryVector(args);
+        return nullptr;
+    }
+    if (head->name == "help") {
+        char* helpMessage = help();
+        return helpMessage;
+    } else if (head->name == "eraseSpaces") {
+        eraseSpaces(args[0]);
+        freeMemoryVectorExcept(args, 0);
+        return args[0];
+    } else if (head->name == "down") {
+        eraseSpaces(args[0]);
+        freeMemoryVectorExcept(args, 0);
+        return args[0];
+    } else {
+        cout << "error : unknown command : " << head->name << endl;
+        freeMemoryVector(args);
+        return nullptr;
+    }
+    freeMemoryVector(args);
+    return nullptr;
+}
+
+void freeMemoryVector(vector<char*>& vec) {
+    for (char* c : vec) {
+        delete[] c;
+    }
+}
+
+void freeMemoryVectorExcept(vector<char*>& vec, int index) {
+    for (int i = 0; i < vec.size(); i++) {
+        if (i != index) {
+            delete[] vec[i];
+        }
+    }
+}
+
 
 int main() {
     // well be using fixed size buffers to correcty communicate with asm
@@ -25,9 +144,9 @@ int main() {
     vector<char*>* tokens = new vector<char*>();
     map<string, int> allowedCommands = {
         {"help", 0},
-        {"down", 1}
+        {"down", 1}, 
+        {"eraseSpaces", 1}
     };
-
     while (true) {
     ReadLoop:
         cout << ">> ";
@@ -44,7 +163,15 @@ int main() {
             }
             // check basic commands
             if (strcmp(buffer, "help") == 0) {
-                help();
+                char* helpMessage = help();
+                printf(helpMessage);
+                free(helpMessage);
+                goto ReadLoop;
+            }
+            if (strcmp(buffer, "h") == 0) {
+                char* helpMessage = help();
+                printf(helpMessage);
+                free(helpMessage);
                 goto ReadLoop;
             }
             if (strcmp(buffer, "quit") == 0) {
@@ -251,6 +378,7 @@ int main() {
             // now, create the tree
             int index = 0;
             node* head = createTheTree(tokens, allowedCommands, index);
+            // finally... well, execute the code!
         }
     }
     delete[] buffer;
@@ -259,64 +387,4 @@ int main() {
     }
     delete tokens;
     return 0;
-}
-
-node* createTheTree(vector<char*>* tokens, map<string, int>& map, int& index) {
-    for (int i = index; i < tokens->size(); i++) {
-        index++;
-        string element = string(tokens->at(i));
-        auto found = map.find(element);
-        if (found != map.end()) {
-            int NumberOfArgs = map[element];
-            if ((i+NumberOfArgs+2) >= tokens->size()) {
-                cout << "error : invalid function declaration : " << tokens->at(i) << endl;
-                return nullptr;
-            }
-            if (!(strcmp(tokens->at(i + 1), "(") == 0)) {
-                cout << "error : invalid function declaration : " << tokens->at(i) << endl;
-                return nullptr;
-            }
-            i++;
-            index++;
-            i++;
-            index++;
-            vector<variant<node*, char*>> children;
-            for (int o = 0; o < NumberOfArgs; o++) {
-                if (strlen(tokens->at(i)) == 0) {
-                    cout << "error : invalid token size." << endl;
-                    return nullptr;
-                } 
-                if (strcmp(tokens->at(i), "\"") == 0 || strcmp(tokens->at(i), "\'") == 0) {
-                    char* arg = new char[strlen(tokens->at(i)) + 1];
-                    strcpy(arg, tokens->at(i));
-                    children.push_back(arg);
-                    if (i != NumberOfArgs - 1) {
-                        o++;
-                        i++;
-                        index++;
-                    }
-                }
-                if (!(strcmp(tokens->at(i), ",") == 0)) {
-                    node* arg = createTheTree(tokens, map, index);
-                    if (arg == nullptr) {
-                        return nullptr;
-                    }        
-                } 
-                index++;
-                i++;
-            }
-            if (!(strcmp(tokens->at(i), ")") == 0)) {
-                cout << "error : function not ended." << endl;
-                return nullptr;
-            }
-            node* n = new node();
-            n->name = element;
-            n->children = children;
-            return n;
-        } else {
-            cout << "error : unknown standart function : " << tokens->at(i) << endl;
-            return nullptr;
-        }
-        index++;
-    }
 }
