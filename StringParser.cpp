@@ -8,9 +8,15 @@
 using namespace std;
 
 // calling the Assembly functions
-extern "C" char* help();
-extern "C" void eraseSpaces(char*);
-extern "C" void down(char*); 
+namespace AsmFuncs {
+    extern "C" void asm_memcpy(void*, void*, int) asm("memcpy");
+    extern "C" char* help();
+    extern "C" void eraseSpacesExceptApostrophies(char*);
+    extern "C" void eraseSpaces(char*);
+    extern "C" void down(char*);
+    extern "C" void print(char*); 
+    extern "C" char* merge(char*, char*);
+}
 
 struct node {
     string name;
@@ -18,9 +24,21 @@ struct node {
 };
 
 
+void freeMemoryVector(vector<char*>& vec) {
+    for (char* c : vec) {
+        delete[] c;
+    }
+}
+
+void freeMemoryVectorExcept(vector<char*>& vec, int index) {
+    for (int i = 0; i < vec.size(); i++) {
+        if (i != index) {
+            delete[] vec[i];
+        }
+    }
+}
 node* createTheTree(vector<char*>* tokens, map<string, int>& map, int& index) {
     for (int i = index; i < tokens->size(); i++) {
-        index++;
         string element = string(tokens->at(i));
         auto found = map.find(element);
         if (found != map.end()) {
@@ -43,24 +61,30 @@ node* createTheTree(vector<char*>* tokens, map<string, int>& map, int& index) {
                     cout << "error : invalid token size." << endl;
                     return nullptr;
                 } 
-                if (strcmp(tokens->at(i), "\"") == 0 || strcmp(tokens->at(i), "\'") == 0) {
-                    char* arg = new char[strlen(tokens->at(i)) + 1];
-                    strcpy(arg, tokens->at(i));
-                    children.push_back(arg);
-                    if (i != NumberOfArgs - 1) {
-                        o++;
-                        i++;
-                        index++;
+                if (tokens->at(i)[0] == '"' || tokens->at(i)[0] == '\'') {
+                    int tokenLen = strlen(tokens->at(i));
+                    if (tokenLen < 2) {
+                        cout << "error : invalid arg size." << endl;
+                        return nullptr;
                     }
-                }
-                if (!(strcmp(tokens->at(i), ",") == 0)) {
+                    char* arg = new char[tokenLen - 1];
+                    AsmFuncs::asm_memcpy(arg, tokens->at(i) + 1, tokenLen - 2);
+                    arg[tokenLen - 2] = 0;
+                    children.push_back(arg);
+                    i++;
+                    index++;
+                } else if (!(strcmp(tokens->at(i), ",") == 0)) {
                     node* arg = createTheTree(tokens, map, index);
+                    i = index;
                     if (arg == nullptr) {
                         return nullptr;
-                    }        
-                } 
-                index++;
-                i++;
+                    }      
+                    children.push_back(arg);  
+                } else {
+                    NumberOfArgs++;
+                    i++;
+                    index++;
+                }
             }
             if (!(strcmp(tokens->at(i), ")") == 0)) {
                 cout << "error : function not ended." << endl;
@@ -71,11 +95,13 @@ node* createTheTree(vector<char*>* tokens, map<string, int>& map, int& index) {
             n->children = children;
             return n;
         } else {
+            cout << tokens->at(i) << "2" << endl;
             cout << "error : unknown standart function : " << tokens->at(i) << endl;
             return nullptr;
-        }
+        } 
         index++;
     }
+    return nullptr;
 }
 char* executeCode(node* head, map<string, int>& map) {
     vector<char*> args;
@@ -102,16 +128,26 @@ char* executeCode(node* head, map<string, int>& map) {
         return nullptr;
     }
     if (head->name == "help") {
-        char* helpMessage = help();
+        char* helpMessage = AsmFuncs::help();
         return helpMessage;
-    } else if (head->name == "eraseSpaces") {
-        eraseSpaces(args[0]);
+    } else if (head->name == "erasespaces") {
+        AsmFuncs::eraseSpaces(args[0]);
         freeMemoryVectorExcept(args, 0);
         return args[0];
     } else if (head->name == "down") {
-        eraseSpaces(args[0]);
+        AsmFuncs::down(args[0]);
         freeMemoryVectorExcept(args, 0);
         return args[0];
+    } else if (head->name == "print") {
+        AsmFuncs::print(args[0]);
+        freeMemoryVector(args);
+        char* returnChar = new char[1];
+        returnChar[0] = 0;
+        return returnChar;
+    } else if (head->name == "merge") {
+        char* output = AsmFuncs::merge(args[0], args[1]);
+        freeMemoryVector(args);
+        return output;
     } else {
         cout << "error : unknown command : " << head->name << endl;
         freeMemoryVector(args);
@@ -119,20 +155,6 @@ char* executeCode(node* head, map<string, int>& map) {
     }
     freeMemoryVector(args);
     return nullptr;
-}
-
-void freeMemoryVector(vector<char*>& vec) {
-    for (char* c : vec) {
-        delete[] c;
-    }
-}
-
-void freeMemoryVectorExcept(vector<char*>& vec, int index) {
-    for (int i = 0; i < vec.size(); i++) {
-        if (i != index) {
-            delete[] vec[i];
-        }
-    }
 }
 
 
@@ -145,7 +167,9 @@ int main() {
     map<string, int> allowedCommands = {
         {"help", 0},
         {"down", 1}, 
-        {"eraseSpaces", 1}
+        {"erasespaces", 1},
+        {"print", 1},
+        {"merge", 2}
     };
     while (true) {
     ReadLoop:
@@ -157,20 +181,24 @@ int main() {
         } else {
             // delete the final \n
             int len = strlen(buffer);
-            if (len < 4095) {
+            if (len < 4095 && len > 0) {
                 len -= 1;
                 buffer[len] = '\0';
             }
+            // check if the command is empty
+            if (len == 0) {
+                goto ReadLoop;
+            }
             // check basic commands
             if (strcmp(buffer, "help") == 0) {
-                char* helpMessage = help();
-                printf(helpMessage);
+                char* helpMessage = AsmFuncs::help();
+                AsmFuncs::print(helpMessage);
                 free(helpMessage);
                 goto ReadLoop;
             }
             if (strcmp(buffer, "h") == 0) {
-                char* helpMessage = help();
-                printf(helpMessage);
+                char* helpMessage = AsmFuncs::help();
+                AsmFuncs::print(helpMessage);
                 free(helpMessage);
                 goto ReadLoop;
             }
@@ -182,7 +210,7 @@ int main() {
             }
             // now, parse it to get the real set of commands
             // first : get rid of all the spaces 
-            eraseSpaces(buffer);
+            AsmFuncs::eraseSpacesExceptApostrophies(buffer);
             // now, check the potential syntax errors
             bool error = false;
             len = strlen(buffer);
@@ -259,7 +287,7 @@ int main() {
                         if (!(inApostropheSimple || inApostropheDouble)) {
                             // add terminaison '\0'
                             if (inElement) {
-                                down(token);
+                                AsmFuncs::down(token);
                                 token[indexInElement] = 0;
                                 tokens->push_back(token);
                                 inElement = false; 
@@ -284,10 +312,8 @@ int main() {
                                 inApostropheSimple = false;
                                 token[indexInElement] = '\'';
                                 indexInElement++;
-                                if (indexInElement > 2) {
-                                    token[indexInElement] = 0;
-                                    tokens->push_back(token);
-                                }
+                                token[indexInElement] = 0;
+                                tokens->push_back(token);
                                 inElement = false;
                             } else {
                                 if (inElement) {
@@ -295,14 +321,14 @@ int main() {
                                     cout << "error : parsing problem occured." << endl;
                                 }
                                 inApostropheSimple = true;
-                                max_size = 0;
-                                for (int o = i; o < len; o++) {
+                                max_size = 1;
+                                for (int o = i + 1; o < len; o++) {
                                     max_size += 1;
                                     if (buffer[o] == '\'') {
                                         break;
                                     }
                                 }
-                                token = new char[max_size];
+                                token = new char[max_size + 1];
                                 inElement = true;
                                 token[0] = '\'';
                                 indexInElement = 1;
@@ -321,10 +347,8 @@ int main() {
                                 inApostropheDouble = false;
                                 token[indexInElement] = '\"';
                                 indexInElement++;
-                                if (indexInElement > 2) {
-                                    token[indexInElement] = 0;
-                                    tokens->push_back(token);
-                                }
+                                token[indexInElement] = 0;
+                                tokens->push_back(token);
                                 inElement = false;
                             } else {
                                 if (inElement) {
@@ -332,14 +356,14 @@ int main() {
                                     cout << "error : parsing problem occured." << endl;
                                 }
                                 inApostropheDouble = true;
-                                max_size = 0;
-                                for (int o = i; o < len; o++) {
+                                max_size = 1;
+                                for (int o = i + 1; o < len; o++) {
                                     max_size += 1;
                                     if (buffer[o] == '\"') {
                                         break;
                                     }
                                 }
-                                token = new char[max_size];
+                                token = new char[max_size + 1];
                                 inElement = true;
                                 token[0] = '\"';
                                 indexInElement = 1;
@@ -354,14 +378,14 @@ int main() {
                             indexInElement++; 
                         } else {
                             inElement = true;
-                            max_size = 0;
+                            max_size = 1;
                             for (int o = i; o < len; o++) {
                                 max_size += 1;
                                 if (buffer[o] == '\"' || buffer[o] == '\'' || buffer[o] == '(' || buffer[o] == ')' || buffer[o] == ',') {
                                     break;
                                 } 
                             }
-                            token = new char[max_size];
+                            token = new char[max_size + 1];
                             indexInElement = 0;
                             token[indexInElement] = buffer[i];
                             indexInElement++;
@@ -372,13 +396,14 @@ int main() {
             if (error) {
                 goto ReadLoop;
             }
-            for (int i = 0; i < tokens->size(); i++) {
-                cout << tokens->at(i) << endl;
-            }
             // now, create the tree
             int index = 0;
             node* head = createTheTree(tokens, allowedCommands, index);
-            // finally... well, execute the code!
+            if (head != nullptr) {
+                // finally... well, execute the code!
+                char* output = executeCode(head, allowedCommands);
+                AsmFuncs::print(output);
+            }
         }
     }
     delete[] buffer;
