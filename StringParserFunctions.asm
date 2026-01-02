@@ -6,11 +6,11 @@ global help
 extern malloc
 help:
     ; copy the string
-    mov rdi, 2043
+    mov rdi, 2044
     call malloc
     ; returns adress in rax
     mov rcx, 2032
-    mov rdi, 2043
+    mov rdi, 2044
     mov rsi, 0
 copyLoopFast:
     movups xmm0, oword [helpString + rsi]
@@ -151,6 +151,7 @@ loopCheck:
     inc rsi
     mov rax, 1
     loop loopCheck
+    jmp ExitCheck
 IgnoreSign:
     inc rsi
     dec rcx
@@ -756,8 +757,8 @@ section .rodata
     STDOUT equ 1
     ; variables
     helpString db "String parser program, v1.0.0, by @AnisDjerrab. GNU general public license v3.0, 2025.", 10
-               db "This a quit advanced programming language prototype, with complete parsing, tokenisation, tree creation, and support for nested structures. it's also case-insensitive", 10
-               db "Here, evrything's a string. even numbers. so everything must be '' or ", 34, " ", 34, ", and both of them have excatly the same purpose.", 10
+               db "This a quit advanced programming language prototype, with complete parsing, tokenisation, tree creation, and support for nested structures. it's also case-insensitive.", 10
+               db "Here, evrything's a string. even numbers. so everything must be '' or ", 34, " ", 34, ", and both of them have exactly the same purpose.", 10
                db "Usage :", 10
                db "  * basic commands *", 10
                db "   q|quit : quit the program.", 10
@@ -780,7 +781,7 @@ section .rodata
                db "   div(<num1>, <num2>) => <num1DividedByNum2> : converts the two numbers in integer, do the division, and converted the result back.", 10
                db "  * examples *", 10
                db "   >> up(merge('the message entered is : ', input('enter anything : ')))", 10
-               db "   >> ADD(len ( 'a message' ), sub ( '-12', '14' ) ) ", 0
+               db "   >> ADD(strlen ( 'a message' ), sub ( '-12', '14' ) ) ", 0
     newLine db 10
     Smaller db "smaller", 0
     Bigger db "bigger", 0

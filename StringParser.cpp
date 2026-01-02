@@ -233,7 +233,7 @@ char* executeCode(node* head, map<string, int>& map) {
     } else if (head->name == "add") {
         AsmFuncs::trim(args[0]);
         AsmFuncs::trim(args[1]);
-        if (!(AsmFuncs::checkNumber(args[0]) || AsmFuncs::checkNumber(args[1]))) {
+        if (!(AsmFuncs::checkNumber(args[0]) && AsmFuncs::checkNumber(args[1]))) {
             cout << "error : invalid number." << endl;
             freeMemoryVector(args);
             return nullptr;
@@ -256,7 +256,7 @@ char* executeCode(node* head, map<string, int>& map) {
     } else if (head->name == "sub") {
         AsmFuncs::trim(args[0]);
         AsmFuncs::trim(args[1]);
-        if (!(AsmFuncs::checkNumber(args[0]) || AsmFuncs::checkNumber(args[1]))) {
+        if (!(AsmFuncs::checkNumber(args[0]) && AsmFuncs::checkNumber(args[1]))) {
             cout << "error : invalid number." << endl;
             freeMemoryVector(args);
             return nullptr;
@@ -271,7 +271,7 @@ char* executeCode(node* head, map<string, int>& map) {
     } else if (head->name == "mul") {
         AsmFuncs::trim(args[0]);
         AsmFuncs::trim(args[1]);
-        if (!(AsmFuncs::checkNumber(args[0]) || AsmFuncs::checkNumber(args[1]))) {
+        if (!(AsmFuncs::checkNumber(args[0]) && AsmFuncs::checkNumber(args[1]))) {
             cout << "error : invalid number." << endl;
             freeMemoryVector(args);
             return nullptr;
@@ -286,7 +286,7 @@ char* executeCode(node* head, map<string, int>& map) {
     } else if (head->name == "div") {
         AsmFuncs::trim(args[0]);
         AsmFuncs::trim(args[1]);
-        if (!(AsmFuncs::checkNumber(args[0]) || AsmFuncs::checkNumber(args[1]))) {
+        if (!(AsmFuncs::checkNumber(args[0]) && AsmFuncs::checkNumber(args[1]))) {
             cout << "error : invalid number." << endl;
             freeMemoryVector(args);
             return nullptr;
