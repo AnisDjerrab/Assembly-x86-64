@@ -6,11 +6,11 @@ global help
 extern malloc
 help:
     ; copy the string
-    mov rdi, 2044
+    mov rdi, 2046
     call malloc
     ; returns adress in rax
     mov rcx, 2032
-    mov rdi, 2044
+    mov rdi, 2046
     mov rsi, 0
 copyLoopFast:
     movups xmm0, oword [helpString + rsi]
@@ -771,9 +771,9 @@ section .rodata
                db "   merge(<arg1>, <arg2>) => <mergeArgs> : concatenates two args.", 10
                db "   trim(<arg>) => <argWithoutSpacesAtTheBeginningOrEnd> : remove all spaces at the beginning and end.", 10
                db "   strcmp(<arg1>, <arg2>) => <result> : returns if arg1 is bigger, smaller, or equal, compared to arg2.", 10
-               db "   print(<arg>) => <void> : outputs a mesage on the screen.", 10
+               db "   print(<arg>) => <void> : outputs a message on the screen.", 10
                db "   input(<args>) => <enteredMessage> : outputs a message on the screen and gets user input.", 10
-               db "   newLine() => <newLine> : returns a newline caracter.", 10
+               db "   newLine() => <newLine> : returns a newline character.", 10
                db "   strlen(<arg>) => <lenOfTheArg> : returns the string-converted len of the arg.", 10
                db "   add(<num1>, <num2>) => <sumOfTheTwoNumber> : converts the two numbers in integer, do the addition, and converted the result back.", 10
                db "   sub(<num1>, <num2>) => <num1MinusNum2> : converts the two numbers in integer, do the subtraction, and converted the result back.", 10
